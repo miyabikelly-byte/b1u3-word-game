@@ -152,13 +152,13 @@
   <h1>翰林B1U3 單字大冒險</h1>
   <p class="sub">用手機就能玩｜🎧 聽力・📝 字義・✏️ 拼字 三關挑戰</p>
   <div class="card">
-    <label>輸入你的英文名字（會存進老師的表格）</label>
+    <label>輸入你的英文名字（記住你的進度）</label>
     <input type="text" id="inName" placeholder="例：Andy" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" maxlength="20">
     <div style="height:12px"></div>
     <button class="btn primary" onclick="startGame()">🚀 出發冒險</button>
     <div id="resumeBox" style="display:none;margin-top:12px"></div>
   </div>
-  <p class="foot">🎧 聽力｜📝 字義｜✏️ 拼字<br>每完成一關會 ☁️ 自動存入老師的表格</p>
+  <p class="foot">🎧 聽力｜📝 字義｜✏️ 拼字<br>每完成一關會自動記住進度</p>
 </section>
 
 <!-- ========== 2. 主選單 ========== -->
@@ -180,7 +180,7 @@
     <button class="btn mint" onclick="openReport()">📊 總成績單</button>
     <button class="btn ghost" onclick="restartAll()">🔄 重新開始</button>
   </div>
-  <p class="foot">成績會 ☁️ 自動上傳，不用按任何按鈕</p>
+  <p class="foot">成績會記在這台裝置上，換人玩請按 🔄 重新開始</p>
 </section>
 
 <!-- ========== 3. 一題一畫面 ========== -->
@@ -243,7 +243,6 @@
     <div class="tbox"><b id="rvScore">0</b><span id="rvScoreTx">本輪得分</span></div>
     <div class="tbox"><b id="rvPct">0%</b><span>正確率</span></div>
   </div>
-  <div class="cloudline" id="rvCloud" style="display:none">☁️ 已自動存入老師的表格</div>
   <h2 style="margin-top:16px">📖 逐題回顧</h2>
   <div id="rvList"></div>
   <div class="row" id="rvRow1">
@@ -253,8 +252,6 @@
     <button class="btn ghost" id="rvAgain" onclick="openLevel(state.level)">🔁 再玩一次這一關</button>
     <button class="btn" onclick="go('sc-menu')">🏠 回主選單</button>
   </div>
-  <div style="height:10px"></div>
-  <button class="btn ghost sm" onclick="syncNow()">☁️ 立即同步（備用）</button>
 </section>
 
 <!-- ========== 5. 總成績單 ========== -->
@@ -277,10 +274,10 @@
   <div class="wronglist" id="rpWrong"></div>
   <div style="height:14px"></div>
   <div class="row">
-    <button class="btn mint" onclick="syncNow()">☁️ 立即同步</button>
+    <button class="btn mint" onclick="restartAll()">🔄 重新開始</button>
     <button class="btn primary" onclick="go('sc-menu')">🎮 繼續冒險</button>
   </div>
-  <div class="cloudline" id="rpCloud" style="display:none">☁️ 已自動存入老師的表格</div>
+  <div class="cloudline" id="rpCloud" style="display:none">💾 進度已存在這台裝置</div>
 </section>
 
 </div>
@@ -295,9 +292,10 @@
    每關 19 題，拆兩輪：第 1 輪 10 題、第 2 輪 9 題
    ================================================================== */
 
-/* ---------- ★★★ 部署設定（换成你的） ★★★ ---------- */
+/* ---------- ★★★ 部署設定 ★★★ ---------- */
 var CONFIG = {
-  GAS_URL: "https://script.google.com/macros/s/AKfycbwYgVf84l-Q76l_p6_6Yvi3YOlmThqRYqRb03_-x8e3vZbKcRyX8cvzWLea0kQ59crS/exec", // ← clasp deploy 後填
+  // 本版＝純前端（不上傳成績，存 localStorage）。日後要上傳試算表再填 GAS /exec 網址。
+  GAS_URL: "",
   SHEET_NAME: "單字拼字遊戲成績",
   MAX_POINT: 10 // 每題分數
 };
@@ -689,7 +687,7 @@ function endRound(){
   document.getElementById("nextBtn").style.display = "none";   // 收尾：隱藏下一題鈕
 
   var isLevelEnd = (state.round === ROUNDS.length - 1);
-  if(isLevelEnd) syncNow(true);   // ☁️ 完成一關自動上傳
+  // 💾 純前端版：只存 localStorage，不上傳
 
   // 標題與分數
   document.getElementById("rvTitle").textContent = isLevelEnd
@@ -701,9 +699,6 @@ function endRound(){
     : state.score + "/" + max;
   document.getElementById("rvPct").textContent =
     (max ? Math.round(state.score / max * 100) : 0) + "%";
-
-  // ☁️ 雲端提示（只在關卡結束時）
-  document.getElementById("rvCloud").style.display = isLevelEnd ? "flex" : "none";
 
   // 逐題回顧（關卡結束時回顧兩輪全部 19 題）
   var list = document.getElementById("rvList"); list.innerHTML = "";
@@ -808,60 +803,9 @@ function buildPayload(){
   };
 }
 
-var syncing = false;
-function syncNow(silent){
-  if(!state.name){ return; }
-  if(syncing) return;
-  if(/REPLACE/.test(CONFIG.GAS_URL)){   // 還沒填後端網址 → 提醒但不報錯
-    toast("⚠️ 還沒設定後端網址（CONFIG.GAS_URL）");
-    return;
-  }
-  var payload = buildPayload();
-  if(!doneLevels()) return;
-  syncing = true;
-
-  var bodyText = JSON.stringify(payload);
-  var done = function(msg){
-    syncing = false;
-    if(!silent || msg) toast(msg || "☁️ 已自動存入老師的表格");
-    var a = document.getElementById("rvCloud"); if(a) a.style.display = "flex";
-    var b = document.getElementById("rpCloud"); if(b) b.style.display = "flex";
-  };
-
-  // 主：fetch 跨域 POST（GAS 回應含 Access-Control-Allow-Origin: *）
-  fetch(CONFIG.GAS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: bodyText
-  }).then(function(r){ return r.text(); }).then(function(txt){
-      var msg = "☁️ 已自動存入老師的表格";
-      try{
-        var j = JSON.parse(txt);
-        if(j && j.result === "已更新") msg = "☁️ 已更新老師的表格（同一列）";
-        if(j && j.ok === false) msg = "⚠️ 上傳失敗：" + (j.error || "未知錯誤");
-      }catch(e){}
-      done(msg);
-    }).catch(function(){
-      // 備援：表單式 POST（不讀回應，一定能送達）
-      try{
-        var f = document.createElement("form");
-        f.method = "POST";
-        f.action = CONFIG.GAS_URL;
-        f.target = "syncFrame";
-        var i = document.createElement("input");
-        i.type = "hidden"; i.name = "payload"; i.value = bodyText;
-        f.appendChild(i);
-        document.body.appendChild(f); f.submit();
-        setTimeout(function(){ document.body.removeChild(f); done("☁️ 已送出（備援通道）"); }, 1200);
-      }catch(e2){ syncing = false; toast("⚠️ 上傳失敗，請按「立即同步」再試"); }
-    });
-}
-window.addEventListener("load", function(){
-  var fr = document.createElement("iframe");
-  fr.name = "syncFrame"; fr.id = "syncFrame";
-  fr.style.display = "none";
-  document.body.appendChild(fr);
-});
+/* 上傳功能已停用（純前端版，成績存 localStorage）。
+   日後若要接回試算表：把 CONFIG.GAS_URL 填上 GAS /exec 網址，
+   並把 buildPayload() 接回 fetch POST 即可（舊版實作見 git 歷史）。 */
 
 /* ================= 彩帶 ================= */
 function confetti(){
